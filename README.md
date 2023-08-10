@@ -3,16 +3,8 @@
 
 </br>
 
-Live results visualization from wandb:
+Results (with [wandb](https://wandb.ai/site)):
 
-![Learning Rate](https://api.wandb.ai/links/m-motta/1f34sz6c "LR")
+![Train Loss](assets/train_loss.svg )
 
-</br>
-![Learning Rate](https://wandb.ai/m-motta/shakespeare-char/reports/lr-23-08-10-12-48-01---Vmlldzo1MTA2NjA5?accessToken=dgohamx9j8p3pksn32ko0fcoasg39ag2jfujisdn0en48qx5lqq3b62ctiruzvd2 "LR")
-
-
-
-
-
-
-
+![Learning Rate](assets/lr.svg )

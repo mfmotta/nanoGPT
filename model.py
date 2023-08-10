@@ -15,6 +15,19 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
+print('Flash attention enabled?', torch.backends.cuda.flash_sdp_enabled())
+
+print('mem_efficient_sdp_enabled',torch.backends.cuda.mem_efficient_sdp_enabled())
+print('math_sdp_enabled', torch.backends.cuda.math_sdp_enabled())
+
+
+with torch.backends.cuda.sdp_kernel(enable_flash=config.use_flash_attention, enable_math=True, enable_mem_efficient=True):
+    print('flash_sdp_enabled',torch.backends.cuda.flash_sdp_enabled())
+    print('mem_efficient_sdp_enabled',torch.backends.cuda.mem_efficient_sdp_enabled())
+    print('math_sdp_enabled', torch.backends.cuda.math_sdp_enabled())
+
+
+
 class LayerNorm(nn.Module):
     """ LayerNorm but with an optional bias. PyTorch doesn't support simply bias=False """
 

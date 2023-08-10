@@ -159,6 +159,7 @@ Optimization strategies should take into account (source: [CUDA programming Guid
 
 
 
+<iframe src="https://wandb.ai/m-motta/shakespeare-char?workspace=user-m-motta" style="border:none;height:1024px;width:100%">
 
 
 

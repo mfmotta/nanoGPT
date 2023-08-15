@@ -20,12 +20,10 @@ print('Flash attention enabled?', torch.backends.cuda.flash_sdp_enabled())
 print('mem_efficient_sdp_enabled',torch.backends.cuda.mem_efficient_sdp_enabled())
 print('math_sdp_enabled', torch.backends.cuda.math_sdp_enabled())
 
-
-with torch.backends.cuda.sdp_kernel(enable_flash=config.use_flash_attention, enable_math=True, enable_mem_efficient=True):
-    print('flash_sdp_enabled',torch.backends.cuda.flash_sdp_enabled())
-    print('mem_efficient_sdp_enabled',torch.backends.cuda.mem_efficient_sdp_enabled())
-    print('math_sdp_enabled', torch.backends.cuda.math_sdp_enabled())
-
+#with torch.backends.cuda.sdp_kernel(enable_flash=config.use_flash_attention, enable_math=True, enable_mem_efficient=True):
+ #   print('flash_sdp_enabled',torch.backends.cuda.flash_sdp_enabled())
+  #  print('mem_efficient_sdp_enabled',torch.backends.cuda.mem_efficient_sdp_enabled())
+ #   print('math_sdp_enabled', torch.backends.cuda.math_sdp_enabled())
 
 
 class LayerNorm(nn.Module):
@@ -56,6 +54,7 @@ class CausalSelfAttention(nn.Module):
         self.dropout = config.dropout
         # flash attention support only in PyTorch >= 2.0
         self.flash = config.use_flash_attention #MM:hasattr(torch.nn.functional, 'scaled_dot_product_attention')
+        print('Using Flash Attention')
         if not self.flash:
             print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
             # causal mask to ensure that attention is only applied to the left in the input sequence
@@ -89,7 +88,7 @@ class CausalSelfAttention(nn.Module):
         return y
 
 class MLP(nn.Module):
-
+ 
     def __init__(self, config):
         super().__init__()
         self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
@@ -127,6 +126,7 @@ class GPTConfig:
     n_embd: int = 768
     dropout: float = 0.0
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    use_flash_attention: bool = True
 
 class GPT(nn.Module):
 

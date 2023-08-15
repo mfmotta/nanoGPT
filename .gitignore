@@ -9,3 +9,5 @@ __pycache__/
 *.pyc
 *wandb
 input.txt
+deviceQuery*
+report*

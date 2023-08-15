@@ -10,7 +10,7 @@ log_interval = 20 # don't print too too often
 always_save_checkpoint = True
 
 # use of flash attention
-use_flash_attention = True
+use_flash_attention = False
 
 wandb_log = True # override via command line if you like
 wandb_project = 'nano-gpt-shakespeare' 

@@ -33,7 +33,7 @@ from model import GPTConfig, GPT
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
-eval_interval = 500  #MM:2000
+eval_interval = 2000  #MM:2000
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
@@ -255,6 +255,8 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 while True:
 
+    if iter_num == warmup_iters: torch.cuda.cudart().cudaProfilerStart()
+
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
     for param_group in optimizer.param_groups:
@@ -298,7 +300,9 @@ while True:
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
+            if iter_num >= warmup_iters: torch.cuda.nvtx.range_push("forward")
             logits, loss = model(X, Y)
+            if iter_num >= warmup_iters: torch.cuda.nvtx.range_pop()
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
@@ -335,3 +339,5 @@ while True:
 
 if ddp:
     destroy_process_group()
+
+torch.cuda.cudart().cudaProfilerStop()

@@ -11,3 +11,4 @@ __pycache__/
 input.txt
 deviceQuery*
 report*
+*.nsys-rep

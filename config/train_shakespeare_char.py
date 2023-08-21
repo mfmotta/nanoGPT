@@ -10,7 +10,6 @@ log_interval = 20 # don't print too too often
 always_save_checkpoint = True
 
 
-
 dataset = 'shakespeare_char' 
 gradient_accumulation_steps = 1
 batch_size = 64
@@ -25,7 +24,7 @@ dropout = 0.2
 flash = False
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
-max_iters = 500 #MM:5000
+max_iters = 400 #MM:5000
 lr_decay_iters = max_iters # 5000 # make equal to max_iters usually
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small

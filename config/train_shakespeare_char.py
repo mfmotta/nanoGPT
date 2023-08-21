@@ -20,14 +20,13 @@ n_head = 6
 n_embd = 384
 dropout = 0.2 
 bias = False # TODO do we use bias inside LayerNorm and Linear layers?
-flash = True
 
 # use of flash attention
-flash = False
+flash = True
 
-# adamw optimizer
+# adamw optimizer 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
-max_iters = 400 
+max_iters = 500
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
@@ -37,27 +36,27 @@ grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
 warmup_iters = max(10, max_iters // 100) # not super necessary potentially
 min_lr = 1e-4 # learning_rate / 10 usually
 decay_lr = True # whether to decay the learning rate
-lr_decay_iters = max_iters # 5000 # make equal to max_iters usually
+lr_decay_iters = max_iters # make equal to max_iters usually
 
 
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False
 
+# profiling: at which iteration start and end profiling
+profiling_start = 2*warmup_iters 
+profiling_end   = profiling_start + 5
+
+#model initialization
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
-
-
-
-
 
 
 # wandb logging
 wandb_log = False # override via command line if you like
 wandb_project = 'profile-nano-gpt-shakespeare' 
-
 if flash: #use flash attention
-    wandb_run_name = 'flash-attention2'
+    wandb_run_name = 'flash-attention3'
 else:
-    wandb_run_name = 'slow-attention2'
+    wandb_run_name = 'slow-attention3'
 
 
          

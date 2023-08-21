@@ -57,8 +57,8 @@ if ddp:
     init_process_group(backend=backend, rank=ddp_rank, world_size=ddp_world_size)
     device = f'cuda:{ddp_local_rank}'
     torch.cuda.set_device(device)
-    master_process = ddp_rank == -1 #MM 0->-1 # this process will do logging, checkpointing etc.
-    seed_offset = ddp_rank # each process gets a different seed
+    master_process = ddp_rank == -1 
+    seed_offset = ddp_rank # MM TODO could exclude this I think
     # world_size number of processes will be training simultaneously, so we can scale
     # down the desired gradient accumulation iterations per process proportionally
     assert gradient_accumulation_steps % ddp_world_size == 0
@@ -75,6 +75,7 @@ print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
+
 torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
@@ -84,8 +85,7 @@ print('\n device_type', device_type)
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-# poor woman's data loader
-#TODO: include distributed sampler: https://github.com/pytorch/examples/blob/main/distributed/ddp-tutorial-series/multigpu.py#L87
+# poor woman's data loader TODO: use distributed sampler? https://github.com/pytorch/examples/blob/main/distributed/ddp-tutorial-series/multigpu.py#L87
 data_dir = os.path.join('data', dataset)
 train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
 val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
@@ -117,6 +117,7 @@ if os.path.exists(meta_path):
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout, flash=flash) # start with model_args from command line
+
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -126,6 +127,7 @@ if init_from == 'scratch':
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
+
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
@@ -294,17 +296,17 @@ with torch.profiler.profile(
                 model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
             with ctx:
                 #nsight profiling: forward step for a few iterations
-                if warmup_iters <= iter_num <= warmup_iters+5: torch.cuda.nvtx.range_push("forward")
+                if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("forward")
                 logits, loss = model(X, Y)
-                if warmup_iters <= iter_num <= warmup_iters+5: torch.cuda.nvtx.range_pop()
+                if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
                 loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
             # immediately async prefetch next batch while model is doing the forward pass on the GPU
             X, Y = get_batch('train')
             # backward pass, with gradient scaling if training in fp16
             #profiling backward step for a few iterations
-            if warmup_iters <= iter_num <= warmup_iters+5: torch.cuda.nvtx.range_push("backward")
+            if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("backward")
             scaler.scale(loss).backward()
-            if warmup_iters <= iter_num <= warmup_iters+5: torch.cuda.nvtx.range_pop()
+            if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
             
         # clip the gradient
         if grad_clip != 0.0:

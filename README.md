@@ -88,7 +88,7 @@ has gotten faster relative to memory speed operations are increasingly bottlenec
  - Memory-bound: Elementwise operations (e.g.,activation, dropout), and reduction (e.g., sum, softmax, batch norm, layer norm).
 
    
-Here we note that the NVIDIA Ampere Architecture enables overlap between data movements and thread execution by introducing asynchronous data movement with **cuda::memcpy_async**[^1]. This reduces the tradeoff between memory and compute and reduces total execution time [1]. In moder detail, ``cuda::memcpy_async`` asynchronously copies data from *GPU global memory* to *shared memory* (which is at the same level as L1 Cache, see fig 2 of blog) bypassing the use of intermediate register file (RF), and thus allowing to overlap memory access with thread execution. In other words, with cuda::memcpy_async, the thread block no longer stages data through registers, freeing the thread block from the task of moving data and freeing registers to be used by computations [2]. Moreover, the portion of the L1 cache to be used as shared memory can be selected at runtime. For details, see the [Ampere Tuning Guide](https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html#:~:text=The%20NVIDIA%20A100%20GPU%20supports,or%20100%20KB%20per%20SM.).
+Here we note that the NVIDIA Ampere Architecture (and more recently, the Hopper Architecture) enables overlap between data movements and thread execution by introducing asynchronous data movement with **cuda::memcpy_async**[^1]. This reduces the tradeoff between memory and compute and reduces total execution time [1]. In moder detail, ``cuda::memcpy_async`` asynchronously copies data from *GPU global memory* to *shared memory* (which is at the same level as L1 Cache, see fig 2 of blog) bypassing the use of intermediate register file (RF), and thus allowing to overlap memory access with thread execution. In other words, with ``cuda::memcpy_async``, the thread block no longer stages data through registers, freeing the thread block from the task of moving data and freeing registers to be used by computations [2]. Moreover, the portion of the L1 cache to be used as shared memory can be selected at runtime. For details, see the [Ampere Tuning Guide](https://docs.nvidia.com/cuda/ampere-tuning-guide/index.html#:~:text=The%20NVIDIA%20A100%20GPU%20supports,or%20100%20KB%20per%20SM.), and the [Hopper]()
 
 # Optimization strategies
 
@@ -109,6 +109,8 @@ Sparsity support in A100 Tensor Cores in Ampere Architecture: [A100 introduces f
 
 [Block-sparse GPU kernels](https://openai.com/research/block-sparse-gpu-kernels)
 
+[Structured sparsity in teh NVIDIA Ampere architecture](https://developer.nvidia.com/blog/structured-sparsity-in-the-nvidia-ampere-architecture-and-applications-in-search-engines/)
+
 </br>
 
 Optimization strategies should take into account:
@@ -120,7 +122,7 @@ Optimization strategies should take into account:
 [1] https://developer.nvidia.com/blog/controlling-data-movement-to-boost-performance-on-ampere-architecture/
 [2] https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/
 
-[^1]  Previous to Ampere (TODO check details) you could already use ``cudaMemcpyAsync`` to overlap data movemente between *CPU on-ship memory and GPU global memory* with kernel execution.
+[^1] Previous to Ampere (TODO check details) you could already use ``cudaMemcpyAsync`` to overlap data movemente between *CPU on-ship memory and GPU global memory* with kernel execution. The Hoper architecture takes the asynchronous copy to another level with the Tensor Memory Accelerator: only a small number of CUDA threads are required to manage the full memory bandwidth of H100  while most other CUDA threads can be focused on general-purpose computations, such as pre-processing and post-processing data for the new generation of Tensor Cores.
 
 
 

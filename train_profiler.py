@@ -17,7 +17,7 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123
 """
  
 import os
-import time
+import time 
 import math
 import pickle
 from contextlib import nullcontext
@@ -227,7 +227,9 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 
 #wrap training in the profiler context manager:
-worker_name = 'flash' if flash else 'slow'
+worker_name = 'flash3' if flash else 'slow2'
+
+print('torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
 with torch.profiler.profile(
 
     activities=[
@@ -236,15 +238,15 @@ with torch.profiler.profile(
     ],
 
     schedule=torch.profiler.schedule(
-        wait=warmup_iters,
+        wait=warmup_iters//2,
         warmup=warmup_iters,
-        active=5,
+        active=9,
         repeat=1),
 
-    on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir, worker_name=worker_name),
+    on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir, worker_name=worker_name),#callable that is called at each step when schedule returns ProfilerAction.RECORD_AND_SAVE during the profiling.
     with_stack = True,
-    with_modules = True
-    
+    with_flops = True,
+    with_modules = True   
 ) as profiler:
     
     while True:

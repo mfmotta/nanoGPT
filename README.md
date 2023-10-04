@@ -44,7 +44,34 @@ Notice how the training and validation metrics don't differ for both types of at
 
 ## GPU Profiling
 
-We profile the forward and backward steps with NSight Systems with the following choices:
+Note that it is not possible to profile with NSight Systems and PyTorch simultaneously.
+
+To profile your traning [with NSight Systems via CLI](https://dev-discuss.pytorch.org/t/using-nsight-systems-to-profile-gpu-workload/59) for a few iteration steps after warm up, add to the training loop:
+
+```
+ # start profiling 
+if iter_num == warmup_iters: torch.cuda.cudart().cudaProfilerStart()
+
+# push range for current iteration
+if iter_num >= warmup_iters: torch.cuda.nvtx.range_push("iteration{}".format(i))
+```
+
+To profile e.g. the forward pass add ``torch.cuda.nvtx.range_push("forward")`` before and  ``torch.cuda.nvtx.range_pop()`` after the forward pass, e.g.:
+
+```
+if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("forward")
+logits, loss = model(X, Y)
+if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
+```
+
+And run ``train.py `` for a few iterations with the following options:
+
+```
+nsys profile --show-output=true --gpu-metrics-device=0 --gpu-metrics-frequency=10 --gpu-metrics-set=0 --trace=cuda, nvtx, osrt, cudnn, cublas --capture-range=cudaProfilerApi --capture-range-end=stop --cudabacktrace=kernel --cuda-memory-usage=true --stop-on-exit=true -o output_file python train.py config/train_shakespeare_char.py
+```
+
+
+with the following choices:
 
 ```shell
 nsys profile --show-output=true --gpu-metrics-device=0 --gpu-metrics-frequency=10 --gpu-metrics-set=0 /
@@ -83,10 +110,6 @@ In more detail, modern GPU architectures (since Volta) have the following hierar
 Registers &rarr; Local Cache (Shared Memory and L1/Read-only Cache) &rarr; L2 Cache &rarr; GPU DRAM (Global Memory + Constant Memory + Read-only/Texture Memory)
 
 where (on-chip) Shared Memory means memory shared between threads *in the same thread block*, i.e. [shared memory is allocated per thread block](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#glossary:~:text=Thread%20Blocks.-,Thread%20Block,-A%20Thread%20Block).
-
-DRAM stands for Dynamic random-access memory, and SRAM for Static random-access memory, and for our discussion, it is only important to know that SRAM is faster than DRAM. Processors registers and Cache are SRAM.
-
-where (on-chip) Shared Memory means memory shared between threads *in the same thread block*, i.e. shared memory is allocated per thread block.(https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#glossary:~:text=Thread%20Blocks.-,Thread%20Block,-A%20Thread%20Block)
 
 DRAM stands for Dynamic random-access memory, and SRAM for Static random-access memory, and for our discussion, it is only important to know that SRAM is faster than DRAM. Processors registers and Cache are SRAM.
 

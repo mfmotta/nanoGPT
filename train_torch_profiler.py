@@ -227,7 +227,7 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 
 #wrap training in the profiler context manager:
-worker_name = 'flash3' if flash else 'slow2'
+worker_name = 'flash' if flash else 'slow'
 
 print('torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
 with torch.profiler.profile(
@@ -240,7 +240,7 @@ with torch.profiler.profile(
     schedule=torch.profiler.schedule(
         wait=warmup_iters//2,
         warmup=warmup_iters,
-        active=9,
+        active=5,
         repeat=1),
 
     on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir, worker_name=worker_name),#callable that is called at each step when schedule returns ProfilerAction.RECORD_AND_SAVE during the profiling.

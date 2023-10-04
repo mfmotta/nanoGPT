@@ -15,90 +15,58 @@ $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 --master_addr=123.456.123
 $ torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 --master_addr=123.456.123.456 --master_port=1234 train.py
 (If your cluster does not have Infiniband interconnect prepend NCCL_IB_DISABLE=1)
 """
-
+ 
 import os
-import time
+import time 
 import math
 import pickle
 from contextlib import nullcontext
 
-import numpy as np 
+import numpy as np
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
 
-# -----------------------------------------------------------------------------
-# default config values designed to train a gpt2 (124M) on OpenWebText
-# I/O
-out_dir = 'out'
-eval_interval = 2000  #MM:2000
-log_interval = 1
-eval_iters = 200
-eval_only = False # if True, script exits right after the first eval
-always_save_checkpoint = True # if True, always save a checkpoint after each eval
-init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
-# wandb logging
-wandb_log = False # disabled by default
-wandb_project = 'owt'
-wandb_run_name = 'gpt2' # 'run' + str(time.time())
-# data
-dataset = 'openwebtext'
-gradient_accumulation_steps = 5 * 8 # used to simulate larger batch sizes
-batch_size = 12 # if gradient_accumulation_steps > 1, this is the micro-batch size
-block_size = 1024
-# model
-n_layer = 12
-n_head = 12
-n_embd = 768
-dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
-bias = False # do we use bias inside LayerNorm and Linear layers?
-flash = True
-# adamw optimizer
-learning_rate = 6e-4 # max learning rate
-max_iters = 600000 # total number of training iterations
-weight_decay = 1e-1
-beta1 = 0.9
-beta2 = 0.95
-grad_clip = 1.0 # clip gradients at this value, or disable if == 0.0
-# learning rate decay settings
-decay_lr = True # whether to decay the learning rate
-warmup_iters = 2000 # how many steps to warm up for
-lr_decay_iters = 600000 # should be ~= max_iters per Chinchilla
-min_lr = 6e-5 # minimum learning rate, should be ~= learning_rate/10 per Chinchilla
+
 # DDP settings
 backend = 'nccl' # 'nccl', 'gloo', etc. 
+
 # system
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 compile = True # use PyTorch 2.0 to compile the model to be faster
+
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
-print('config', config)
+print('\n config', config)
+print('\n check device',torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.device(0), torch.cuda.get_device_name(0))
 # -----------------------------------------------------------------------------
 
 # various inits, derived attributes, I/O setup
-ddp = int(os.environ.get('RANK', -1)) != -1 # is this a ddp run?
+ddp = True # use ddp even though we have a single GPU -- for practice
 if ddp:
-    init_process_group(backend=backend)
-    ddp_rank = int(os.environ['RANK'])
-    ddp_local_rank = int(os.environ['LOCAL_RANK'])
-    ddp_world_size = int(os.environ['WORLD_SIZE'])
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12345" 
+    ddp_rank = 0 
+    ddp_local_rank = 0 
+    ddp_world_size = 1 
+    init_process_group(backend=backend, rank=ddp_rank, world_size=ddp_world_size)
     device = f'cuda:{ddp_local_rank}'
     torch.cuda.set_device(device)
-    print('\n \n MM:Device \n \n', device)
-    master_process = ddp_rank == 0 # this process will do logging, checkpointing etc.
-    seed_offset = ddp_rank # each process gets a different seed
+    master_process = ddp_rank == -1 
+    seed_offset = ddp_rank # MM TODO could exclude this I think
     # world_size number of processes will be training simultaneously, so we can scale
     # down the desired gradient accumulation iterations per process proportionally
     assert gradient_accumulation_steps % ddp_world_size == 0
     gradient_accumulation_steps //= ddp_world_size
+    print('\n MM Running as DDP with rank = {} and world size = {}'.format(ddp_local_rank, ddp_world_size))
 else:
     # if not ddp, we are running on a single gpu, and one process
-    print('\n Running on single GPU')
+    print('\n \n MM  Running on device', device)
     master_process = True
     seed_offset = 0
     ddp_world_size = 1
@@ -107,6 +75,7 @@ print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
 if master_process:
     os.makedirs(out_dir, exist_ok=True)
+
 torch.manual_seed(1337 + seed_offset)
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
 torch.backends.cudnn.allow_tf32 = True # allow tf32 on cudnn
@@ -116,7 +85,7 @@ print('\n device_type', device_type)
 ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
 ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
 
-# poor man's data loader
+# poor woman's data loader TODO: use distributed sampler? https://github.com/pytorch/examples/blob/main/distributed/ddp-tutorial-series/multigpu.py#L87
 data_dir = os.path.join('data', dataset)
 train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
 val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
@@ -148,6 +117,7 @@ if os.path.exists(meta_path):
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
                   bias=bias, vocab_size=None, dropout=dropout, flash=flash) # start with model_args from command line
+
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -157,6 +127,7 @@ if init_from == 'scratch':
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
     gptconf = GPTConfig(**model_args)
     model = GPT(gptconf)
+
 elif init_from == 'resume':
     print(f"Resuming training from {out_dir}")
     # resume training from a checkpoint.
@@ -254,9 +225,15 @@ t0 = time.time()
 local_iter_num = 0 # number of iterations in the lifetime of this process
 raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
+
+    
 while True:
 
+    #start profiling
     if iter_num == warmup_iters: torch.cuda.cudart().cudaProfilerStart()
+
+    # push range for current iteration
+    if iter_num >= warmup_iters: torch.cuda.nvtx.range_push("iteration{}".format(i))
 
     # determine and set the learning rate for this iteration
     lr = get_lr(iter_num) if decay_lr else learning_rate
@@ -279,7 +256,8 @@ while True:
             best_val_loss = losses['val']
             if iter_num > 0:
                 checkpoint = {
-                    'model': raw_model.state_dict(),
+                    #'model': raw_model.state_dict(),
+                    'model': raw_model.module.state_dict(), ##MM because model is wrapped in DDP, check difference
                     'optimizer': optimizer.state_dict(),
                     'model_args': model_args,
                     'iter_num': iter_num,
@@ -301,20 +279,21 @@ while True:
             # looking at the source of that context manager, it just toggles this variable
             model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
         with ctx:
-            #profiling forward step for a few iterations
-            if 20*warmup_iters <= iter_num <= 21*warmup_iters: torch.cuda.nvtx.range_push("forward")
+
+            # NSIGHT PROFILE forward step for a few iterations
+            if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("forward")
             logits, loss = model(X, Y)
-            if 20*warmup_iters <= iter_num <= 21*warmup_iters: torch.cuda.nvtx.range_pop()
+            if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
 
             loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
         # immediately async prefetch next batch while model is doing the forward pass on the GPU
         X, Y = get_batch('train')
         # backward pass, with gradient scaling if training in fp16
-
-        #profiling backward step for a few iterations
-        if 20*warmup_iters <= iter_num <= 21*warmup_iters: torch.cuda.nvtx.range_push("backward")
+       
+        # NSIGHT PROFILE backward step for a few iterations
+        if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("backward")
         scaler.scale(loss).backward()
-        if 20*warmup_iters <= iter_num <= 21*warmup_iters: torch.cuda.nvtx.range_pop()
+        if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
         
     # clip the gradient
     if grad_clip != 0.0:
@@ -345,8 +324,8 @@ while True:
     if iter_num > max_iters:
         break
 
-
 if ddp:
     destroy_process_group()
+
 
 

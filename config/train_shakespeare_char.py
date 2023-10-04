@@ -42,7 +42,7 @@ lr_decay_iters = max_iters # make equal to max_iters usually
 # we expect to overfit on this small dataset, so only save when val improves
 always_save_checkpoint = False
 
-# profiling: at which iteration start and end profiling
+# NSight profiling: at which iteration start and end profiling
 profiling_start = 2*warmup_iters 
 profiling_end   = profiling_start + 5
 
@@ -54,9 +54,9 @@ init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 wandb_log = False # override via command line if you like
 wandb_project = 'profile-nano-gpt-shakespeare' 
 if flash: #use flash attention
-    wandb_run_name = 'flash-attention3'
+    wandb_run_name = 'flash-attention'
 else:
-    wandb_run_name = 'slow-attention3'
+    wandb_run_name = 'slow-attention'
 
 
          

@@ -86,6 +86,10 @@ where (on-chip) Shared Memory means memory shared between threads *in the same t
 
 DRAM stands for Dynamic random-access memory, and SRAM for Static random-access memory, and for our discussion, it is only important to know that SRAM is faster than DRAM. Processors registers and Cache are SRAM.
 
+where (on-chip) Shared Memory means memory shared between threads *in the same thread block*, i.e. shared memory is allocated per thread block.(https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#glossary:~:text=Thread%20Blocks.-,Thread%20Block,-A%20Thread%20Block)
+
+DRAM stands for Dynamic random-access memory, and SRAM for Static random-access memory, and for our discussion, it is only important to know that SRAM is faster than DRAM. Processors registers and Cache are SRAM.
+
 In figure, the arrows show how threads access different levels of the hierarchy. 
 
 (page 8 of https://drive.google.com/file/d/1BxiovKdODm1OsRTsLzW0LyOj1CfBYVQX/view?pli=1)

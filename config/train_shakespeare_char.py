@@ -40,7 +40,7 @@ lr_decay_iters = max_iters # make equal to max_iters usually
 
 
 # we expect to overfit on this small dataset, so only save when val improves
-always_save_checkpoint = False
+always_save_checkpoint = True
 
 # NSight profiling: at which iteration start and end profiling
 profiling_start = 2*warmup_iters 

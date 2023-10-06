@@ -46,6 +46,32 @@ Notice how the training and validation metrics don't differ for both types of at
 
 Note that it is not possible to profile with NSight Systems and PyTorch simultaneously[^2].
 
+### PyTorch Profiler and TensorBoard
+
+To profile with PyTorch, run the training loop within the torch.profiler context, i.e. (see [``train_torch_profiler.py``](https://github.com/mfmotta/nanoGPT/blob/main/train_torch_profiler.py)):
+
+```
+with torch.profiler.profile(
+
+    activities=[
+        torch.profiler.ProfilerActivity.CPU,
+        torch.profiler.ProfilerActivity.CUDA,
+    ],
+
+    schedule = torch.profiler.schedule(**profiler_schedule_args),
+
+    on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir+'/'+log_folder_name, worker_name="gpu0"),
+    with_stack = True,
+    with_flops = True,
+    with_modules = True   
+) as profiler:
+```
+We use the parameters defined in [``train_shakespeare_char.py``](https://github.com/mfmotta/nanoGPT/blob/main/config/train_shakespeare_char.py) to generate the plots that can be visualized in the [wandb report](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1).
+
+
+
+
+### NSight Systems Profiler
 To profile your traning [with NSight Systems via CLI](https://dev-discuss.pytorch.org/t/using-nsight-systems-to-profile-gpu-workload/59) for a few iteration steps after warm up, add to the training loop:
 
 ```

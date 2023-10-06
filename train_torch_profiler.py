@@ -30,6 +30,9 @@ from torch.distributed import init_process_group, destroy_process_group
 from model import GPTConfig, GPT
 
 
+# https://github.com/pytorch/kineto/issues/726
+os.environ.update({'KINETO_LOG_LEVEL' : '3'})
+
 # DDP settings
 backend = 'nccl' # 'nccl', 'gloo', etc. 
 

@@ -44,7 +44,7 @@ Notice how the training and validation metrics don't differ for both types of at
 
 ## GPU Profiling
 
-Note that it is not possible to profile with NSight Systems and PyTorch simultaneously.
+Note that it is not possible to profile with NSight Systems and PyTorch simultaneously[^2].
 
 To profile your traning [with NSight Systems via CLI](https://dev-discuss.pytorch.org/t/using-nsight-systems-to-profile-gpu-workload/59) for a few iteration steps after warm up, add to the training loop:
 
@@ -182,6 +182,7 @@ Optimization strategies should take into account (source: [CUDA programming Guid
 [2] https://developer.nvidia.com/blog/nvidia-ampere-architecture-in-depth/
 
 [^1]: Previous to Ampere you could already use ``cudaMemcpyAsync`` to overlap data movemente between *CPU on-ship memory and GPU global memory* with kernel execution. More recently, the Hoper architecture extends Ampere’s global-to-shared asynchronous transfers across all address spaces and adds support for tensor memory access patterns. With the Tensor Memory Accelerator (TMA): only a small number of CUDA threads are required to manage the full memory bandwidth of H100  while most other CUDA threads can be focused on general-purpose computations, such as pre-processing and post-processing data for the new generation of Tensor Cores.
+[^2]: See https://github.com/tensorflow/tensorboard/issues/5289
 
 
 

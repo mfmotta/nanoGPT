@@ -20,6 +20,7 @@ import os
 import time 
 import math
 import pickle
+import glob
 from contextlib import nullcontext
 
 import numpy as np
@@ -28,7 +29,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
-
 
 # https://github.com/pytorch/kineto/issues/726
 os.environ.update({'KINETO_LOG_LEVEL' : '3'})
@@ -60,7 +60,7 @@ if ddp:
     init_process_group(backend=backend, rank=ddp_rank, world_size=ddp_world_size)
     device = f'cuda:{ddp_local_rank}'
     torch.cuda.set_device(device)
-    master_process = ddp_rank == -1 
+    master_process = ddp_rank  == 0 
     seed_offset = ddp_rank # MM TODO could exclude this I think
     # world_size number of processes will be training simultaneously, so we can scale
     # down the desired gradient accumulation iterations per process proportionally
@@ -153,6 +153,7 @@ elif init_from == 'resume':
             state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
     model.load_state_dict(state_dict)
     iter_num = checkpoint['iter_num']
+    print('\n warm start from iter_num \n ',iter_num)
     best_val_loss = checkpoint['best_val_loss']
 elif init_from.startswith('gpt2'):
     print(f"Initializing from OpenAI GPT-2 weights: {init_from}")
@@ -186,6 +187,7 @@ if compile:
 # wrap model into DDP container
 if ddp:
     model = DDP(model, device_ids=[ddp_local_rank])
+    print('model.module')
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
 @torch.no_grad()
@@ -217,10 +219,7 @@ def get_lr(it):
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff ranges 0..1
     return min_lr + coeff * (learning_rate - min_lr)
 
-# logging
-if wandb_log and master_process:
-    import wandb
-    wandb.init(project=wandb_project, name=wandb_run_name, config=config) #MM: added resume True
+
 
 # training loop
 X, Y = get_batch('train') # fetch the very first batch
@@ -230,9 +229,28 @@ raw_model = model.module if ddp else model # unwrap DDP container if needed
 running_mfu = -1.0
 
 #wrap training in the profiler context manager:
-worker_name = 'flash' if flash else 'slow'
+profiler_schedule_args = {
+    'skip_first': 5,
+    'wait': warmup_iters // 2,
+    'warmup': warmup_iters // 2,
+    'active': 3,
+    'repeat': 2
+}
 
-print('torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
+#create a separate logs folder for each attention run
+attention_type = 'flash_' if flash else 'slow_'
+log_folder_name = attention_type+"_".join([f"{key}{value}" for key, value in profiler_schedule_args.items()])
+log_folder_name = f"logs_{log_folder_name}"
+if master_process:
+    os.makedirs(out_dir+'/'+log_folder_name, exist_ok=True)
+
+if wandb_log and master_process:
+    import wandb
+   # wandb.tensorboard.patch(root_logdir=out_dir) #+'/'+log_folder_name)
+    wandb.init(project=wandb_project, name=wandb_run_name, config=config, sync_tensorboard=True) 
+
+# Enable profiler with context manager
+print('\n torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
 with torch.profiler.profile(
 
     activities=[
@@ -240,22 +258,15 @@ with torch.profiler.profile(
         torch.profiler.ProfilerActivity.CUDA,
     ],
 
-    schedule=torch.profiler.schedule(
-        wait=warmup_iters//2,
-        warmup=warmup_iters,
-        active=5,
-        repeat=1),
+    schedule = torch.profiler.schedule(**profiler_schedule_args),
 
-    on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir, worker_name=worker_name),#callable that is called at each step when schedule returns ProfilerAction.RECORD_AND_SAVE during the profiling.
+    on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir+'/'+log_folder_name, worker_name="gpu0"),#callable that is called at each step when schedule returns ProfilerAction.RECORD_AND_SAVE during the profiling.
     with_stack = True,
     with_flops = True,
     with_modules = True   
 ) as profiler:
     
     while True:
-
-        if iter_num == warmup_iters: torch.cuda.cudart().cudaProfilerStart()
-
         # determine and set the learning rate for this iteration
         lr = get_lr(iter_num) if decay_lr else learning_rate
         for param_group in optimizer.param_groups:
@@ -271,14 +282,13 @@ with torch.profiler.profile(
                     "train/loss": losses['train'],
                     "val/loss": losses['val'],
                     "lr": lr,
-                    "mfu": running_mfu*100, # convert to percentage
+                    "mfu": running_mfu*100, # model flops utilization - convert to percentage
                 })
             if losses['val'] < best_val_loss or always_save_checkpoint:
                 best_val_loss = losses['val']
                 if iter_num > 0:
                     checkpoint = {
-                        #'model': raw_model.state_dict(),
-                        'model': raw_model.module.state_dict(), ##MM because model is wrapped in DDP, check difference
+                        'model': raw_model.state_dict(),
                         'optimizer': optimizer.state_dict(),
                         'model_args': model_args,
                         'iter_num': iter_num,
@@ -300,18 +310,12 @@ with torch.profiler.profile(
                 # looking at the source of that context manager, it just toggles this variable
                 model.require_backward_grad_sync = (micro_step == gradient_accumulation_steps - 1)
             with ctx:
-                #nsight profiling: forward step for a few iterations
-                if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("forward")
                 logits, loss = model(X, Y)
-                if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
                 loss = loss / gradient_accumulation_steps # scale the loss to account for gradient accumulation
             # immediately async prefetch next batch while model is doing the forward pass on the GPU
             X, Y = get_batch('train')
             # backward pass, with gradient scaling if training in fp16
-            #profiling backward step for a few iterations
-            if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_push("backward")
             scaler.scale(loss).backward()
-            if profiling_start <= iter_num <= profiling_end: torch.cuda.nvtx.range_pop()
             
         # clip the gradient
         if grad_clip != 0.0:
@@ -343,9 +347,10 @@ with torch.profiler.profile(
             break
 
         profiler.step()
-    
-torch.cuda.cudart().cudaProfilerStop()
-
+    profiler.stop()
+    for cycle in glob.glob(f"{out_dir+'/'+log_folder_name}/*.pt.trace.json", recursive=True):
+        wandb.save(cycle, base_path=f"{out_dir+'/'+log_folder_name}", policy="now") 
+            
 if ddp:
     destroy_process_group()
 

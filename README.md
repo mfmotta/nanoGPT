@@ -68,8 +68,37 @@ with torch.profiler.profile(
 ```
 We use the parameters defined in [``train_shakespeare_char.py``](https://github.com/mfmotta/nanoGPT/blob/main/config/train_shakespeare_char.py) to generate the plots that can be visualized in the [wandb report](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1).
 
+As is, the code will save the tensorboard profiler logs to wandb.
+
+### Tensorboard Torch Profiler Overview
+
+![tensorboard overview](tensorboard_overview.png "Title")
+
+### Kernel View - Slow Attention
+
+![kernel_view_slow_attention](kernel_view_slow_attention.png "kernels Slow Attention")
 
 
+### Kernel View - Fast Attention
+
+![kernel_view_flash_attention](kernel_view_flash_attention.png "kernels Flash Attention")
+
+
+## GEMM Kernels 
+
+Let us focus on the General Matrix Multiplication kernels
+
+### GEMM Kernels - Slow Attention
+
+![gemm_kernels_slow_attention](gemm_kernels_slow_attention.png "GEMM Slow Attention")
+
+
+### GEMM Kernels - Fast Attention
+
+![gemm_kernels_flash_attention](gemm_kernels_flash_attention.png "GEMM Flash Attention")
+
+
+</br>
 
 ### NSight Systems Profiler
 To profile your traning [with NSight Systems via CLI](https://dev-discuss.pytorch.org/t/using-nsight-systems-to-profile-gpu-workload/59) for a few iteration steps after warm up, add to the training loop:

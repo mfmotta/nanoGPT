@@ -9,12 +9,12 @@ log_interval = 20 # don't print too too often
 dataset = 'shakespeare_char' 
 gradient_accumulation_steps = 1
 batch_size = 64
-block_size = 256 # context of up to 256 previous characters
+block_size = 256 #=sequence length= context of up to 256 previous characters
 
 # model
 n_layer = 6
 n_head = 6
-n_embd = 384
+n_embd = 384 #head dimension
 dropout = 0.2 
 bias = False # TODO do we use bias inside LayerNorm and Linear layers?
 
@@ -54,9 +54,7 @@ init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 wandb_log = True # override via command line if you like
 wandb_project = 'profile-attention-nano-gpt' 
 if flash: #use flash attention
-    wandb_run_name = 'flash-attention'
+    wandb_run_name = 'flash'+'-n_head'+n_head+'-h_size'+n_embd+'-seq_len'+block_size
 else:
-    wandb_run_name = 'slow-attention'
+    wandb_run_name = 'slow'+'-n_head'+n_head+'-h_size'+n_embd+'-seq_len'+block_size
 
-
-         

@@ -1,13 +1,15 @@
-# Experiments with [nanoGPT](https://github.com/karpathy/nanoGPT)
+# Profiling the training of [nanoGPT](https://github.com/karpathy/nanoGPT)
 
-Here we compare training  the nanoGPT model with "slow" and "flash" attention.
+This project is based on nanoGPT -- a medium-sized GPT model that is able to reproduce GPT-2 on OpenWebText. Please refer to the original repository for details. Our project will focus on the computational efficiency of the Attention Layers used by the model.
 
-</br>
+### What is different:
 
-Results can be visualized [here](https://api.wandb.ai/links/m-motta/ky8ak8xl).
+list functions and changes
+list additional code: notebook and cuda/cutlass
 
+PyTorch >= 2.0 introduces an optimization of the Attention Layer referred to as *Flash Attention*. The key idea introduced by the [Flash Attention](https://arxiv.org/abs/2205.14135) paper is to minimize memory movement during computation, i.e. reads and writes on different levels of the memory hierarchy, which makes computations and therefore training much faster.
 
-Notice how the training and validation metrics don't differ for both types of attention, but the GPU utilization differs significantly.
+In these experiments we will focus on a tiny version of the model trained on the works of Shakespeare. We don't aim for optimizing training at this point.
 
 ## Training parameters:
 
@@ -42,11 +44,19 @@ Notice how the training and validation metrics don't differ for both types of at
  
 </br>
 
+# Training faster with Flash attention.
+
+We train the model for a few hundred iterations with both "slow" and "flash" attention. Results can be visualized [here](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1). Training and validation metrics don't differ for both types of attention, but the GPU utilization does. In particular, we see that flash attention trains much faster (less than half of the time in this short probing experiment). Wandb uses [nvidia-ml-py3](https://github.com/nicolargo/nvidia-ml-py3/blob/master/pynvml.py) to collect[ system metrics](https://docs.wandb.ai/guides/app/features/system-metrics). The reported GPU memory utlization refers to the DRAM global device memory (see the NVML API Reference Manual in [NVIDIA Management Library (NVML)](https://developer.nvidia.com/nvidia-management-library-nvml)).
+
+</br>
+
+
+
 ## GPU Profiling
 
-Note that it is not possible to profile with NSight Systems and PyTorch simultaneously[^2].
+Notice that it is not possible to profile with NSight Systems and PyTorch simultaneously[^2].
 
-### PyTorch Profiler and TensorBoard
+## PyTorch Profiler and TensorBoard
 
 To profile with PyTorch, run the training loop within the torch.profiler context, i.e. (see [``train_torch_profiler.py``](https://github.com/mfmotta/nanoGPT/blob/main/train_torch_profiler.py)):
 
@@ -60,40 +70,65 @@ with torch.profiler.profile(
 
     schedule = torch.profiler.schedule(**profiler_schedule_args),
 
-    on_trace_ready = torch.profiler.tensorboard_trace_handler(out_dir+'/'+log_folder_name, worker_name="gpu0"),
+    on_trace_ready = torch.profiler.tensorboard_trace_handler(logs_dir, worker_name="gpu0"),
     with_stack = True,
     with_flops = True,
     with_modules = True   
 ) as profiler:
 ```
-We use the parameters defined in [``train_shakespeare_char.py``](https://github.com/mfmotta/nanoGPT/blob/main/config/train_shakespeare_char.py) to generate the plots that can be visualized in the [wandb report](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1).
 
-As is, the code will save the tensorboard profiler logs to wandb.
+We use the parameters defined in [``train_shakespeare_char.py``](https://github.com/mfmotta/nanoGPT/blob/main/config/train_shakespeare_char.py) to generate the plots that can be visualized in the [wandb report](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1). 
 
-### Tensorboard Torch Profiler Overview
+
+As is, the code will save the TensorBoard profiler logs to wandb, but these cannot be shared in the report. So below we show parts of the TensorBoard report:
+
+## Tensorboard Torch Profiler Overview
+
+GPU Summary 
+
+|                         | Slow   | Flash   |
+|---                      |---     |---     |
+| GPU Utilization         |96.14 % | 95.13 % |
+| Est. SM Efficiency      |96.10 % | 95.09 % |
+| Est. Achieved Occupancy |53.19 % | 40.49 % |
+
+</br>
+
+GPU Utilization = active GPU time --with at least one kernel running on it.
+
+Streaming Multiprocessor (SM) Efficiency for a kernel = number of active blocks / GPU's number of SMs.
+
+Occupancy = number of active warps / maximum number of warps per SM.
+
+
+We see that GPU Utilization and Streaming Multiprocessor Efficiency have good values and are roughly the same for both types of attention. Occupancy however is low and, interestingly, worse for Flash Attention. We have explored these concepts in [Lab06](https://github.com/mfmotta/CUDA_labs/tree/master/lab06) of the [Parallel Computing with GPUs course](https://github.com/mfmotta/CUDA_labs/tree/master).
 
 ![tensorboard overview](assets/tensorboard_overview.png "Title")
 
-### Kernel View - Slow Attention
+</br>
+
+## Kernel View 
+
+| Slow   | Flash   |
+|:-------------------------:|:-------------------------:|
+|![kernel_view_slow](assets/kernel_view_slow_attention.png "kernels Slow Attention") | ![kernel_view_flash](assets/kernel_view_flash_attention.png "kernels Flash Attention") |
+
 
 ![kernel_view_slow_attention](assets/kernel_view_slow_attention.png "kernels Slow Attention")
 
+</br>
 
-### Kernel View - Flash Attention
-
-![kernel_view_flash_attention](assets/kernel_view_flash_attention.png "kernels Flash Attention")
-
-
-## GEMM Kernels 
+# GEMM Kernels 
 
 Let us focus on the General Matrix Multiplication kernels.
+We would see larger gains for larger head dimensions-- notebook
 
-### GEMM Kernels - Slow Attention
+## GEMM Kernels - Slow Attention
 
 ![gemm_kernels_slow_attention](assets/gemm_kernels_slow_attention.png "GEMM Slow Attention")
 
 
-### GEMM Kernels - Fast Attention
+## GEMM Kernels - Fast Attention
 
 ![gemm_kernels_flash_attention](assets/gemm_kernels_flash_attention.png "GEMM Flash Attention")
 

@@ -350,6 +350,7 @@ with torch.profiler.profile(
     profiler.stop()
     for cycle in glob.glob(f"{out_dir+'/'+log_folder_name}/*.pt.trace.json", recursive=True):
         wandb.save(cycle, base_path=f"{out_dir+'/'+log_folder_name}", policy="now") 
+    wandb.finish()
             
 if ddp:
     destroy_process_group()

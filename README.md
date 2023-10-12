@@ -1,15 +1,24 @@
-# Profiling the training of [nanoGPT](https://github.com/karpathy/nanoGPT)
+# Profiling the training of [nanoGPT](https://github.com/karpathy/nanoGPT) with different implementations of the attention layer
 
 This project is based on nanoGPT -- a medium-sized GPT model that is able to reproduce GPT-2 on OpenWebText. Please refer to the original repository for details. Our project will focus on the computational efficiency of the Attention Layers used by the model.
-
-### What is different:
-
-list functions and changes
-list additional code: notebook and cuda/cutlass
 
 PyTorch >= 2.0 introduces an optimization of the Attention Layer referred to as *Flash Attention*. The key idea introduced by the [Flash Attention](https://arxiv.org/abs/2205.14135) paper is to minimize memory movement during computation, i.e. reads and writes on different levels of the memory hierarchy, which makes computations and therefore training much faster.
 
 In these experiments we will focus on a tiny version of the model trained on the works of Shakespeare. We don't aim for optimizing training at this point.
+
+
+#### What is different?
+
+I have used Karpathy's nanoGPT as a starting point for this project. I have made the following changes and contributions on top of it:
+ - refactored ``config/train_shakespear_char.py`` to contain all tunable parameters.
+ - introduced ``train_torch_profiler.py`` and ``train_nsight_profiler.py``, which are adaptations of 
+ the original ``train.py`` for profiling with different tools.
+ - introduced ``benchmark.ipynb`` with experiments benchmarking the two types of attention.
+ - introduced ``cuda/gemm_kernel.cu`` for profiling experiments with the GEMM kernel using [CUTLASS](https://github.com/NVIDIA/cutlass/tree/main).
+ 
+ ---
+</br>
+
 
 ## Training parameters:
 

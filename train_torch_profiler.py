@@ -21,6 +21,8 @@ import time
 import math
 import pickle
 import glob
+import socket
+
 from contextlib import nullcontext
 
 import numpy as np
@@ -33,9 +35,6 @@ import torch.multiprocessing as mp
 
 from model import GPTConfig, GPT
 
-import sys
-print(sys.path)
-
 #requires PyTorch >=2.0 #TODO
 
 # https://github.com/pytorch/kineto/issues/726
@@ -43,12 +42,13 @@ print(sys.path)
 
 device = 'cuda' # examples: 'cpu', 'cuda', 'cuda:0', 'cuda:1' etc., or try 'mps' on macbooks
 backend =  'nccl'  # 'nccl', 'gloo', etc.
+dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
 
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 wandb_config = {k: globals()[k] for k in config_keys} # will be useful for logging
 
-print('\n wandb_config', wandb_config)
-print('\n wandb.__file__',wandb.__file__)
+#print('\n wandb_config', wandb_config)
+#print('\n wandb.__file__',wandb.__file__)
 #print('\n check device',torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.device(0), torch.cuda.get_device_name(0))
 
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
@@ -89,7 +89,6 @@ def main():
     print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
     device_type = 'cuda' if 'cuda' in device else 'cpu' # for later use in torch.autocast
-    dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported() else 'float16' # 'float32', 'bfloat16', or 'float16', the latter will auto implement a GradScaler
     ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
     ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
     
@@ -100,7 +99,7 @@ def main():
         os.makedirs(params.out_dir, exist_ok=True)
 
     # use distributed sampler? https://github.com/pytorch/examples/blob/main/distributed/ddp-tutorial-series/multigpu.py#L87
-    data_dir = os.path.join('data', params.dataset)
+    data_dir = os.path.join('/home/nanoGPT/data', params.dataset) # TODO adapt os.path.abspath(os.path.join('data', params.dataset))
     train_data = np.memmap(os.path.join(data_dir, 'train.bin'), dtype=np.uint16, mode='r')
     val_data = np.memmap(os.path.join(data_dir, 'val.bin'), dtype=np.uint16, mode='r')
 
@@ -252,7 +251,8 @@ def main():
         wandb.init(project=params.wandb_project, name=params.wandb_run_name, config=wandb_config, sync_tensorboard=True) 
 
     # Wrap train loop in the profiler context manager:
-    print('\n torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
+    #print('\n torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
+    print("\n \n profiler_schedule_args \n  \n", params.profiler_schedule_args)
     with torch.profiler.profile(
 
         activities=[
@@ -359,6 +359,16 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    host = '127.0.0.1'
+    port = 12345
+
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((host, port))
+
+    try:
+        main()
+    
+    finally:
+        server_socket.close()
 
 

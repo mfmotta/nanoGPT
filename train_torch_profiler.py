@@ -26,6 +26,7 @@ import socket
 from contextlib import nullcontext
 
 import numpy as np
+import random
 import torch
 import wandb
 import config.train_shakespeare_char as params
@@ -49,6 +50,7 @@ wandb_config = {k: globals()[k] for k in config_keys} # will be useful for loggi
 
 #print('\n wandb_config', wandb_config)
 #print('\n wandb.__file__',wandb.__file__)
+#print(os.environ['CUDA_VISIBLE_DEVICES'])
 #print('\n check device',torch.cuda.is_available(), torch.cuda.device_count(), torch.cuda.device(0), torch.cuda.get_device_name(0))
 
 torch.backends.cuda.matmul.allow_tf32 = True # allow tf32 on matmul
@@ -58,13 +60,14 @@ def main():
 
     #we will use ddp even with a single GPU
     if torch.cuda.is_available():
+        print('\n Using Torch DDP \n ')
         ddp = True
         if torch.cuda.device_count() > 1:
             ddp_local_rank = int(os.environ['RANK'])
             ddp_world_size = int(os.environ['WORLD_SIZE'])#ngpus_per_node = torch.cuda.device_count() #=local world_size
         else:
             os.environ["MASTER_ADDR"] = "localhost"
-            os.environ["MASTER_PORT"] = "12346"
+            os.environ["MASTER_PORT"] = str(params.random_port) #has to be the same as server_socket so wandb will access GPU
             ddp_local_rank = 0
             ddp_world_size = 1
 
@@ -83,7 +86,7 @@ def main():
     else:
         ddp = False
         device = 'cpu'
-        print('using CPU, this will be slow')
+        print('\n using CPU, this will be slow')
         master_process = True
         ddp_world_size = 1
 
@@ -242,15 +245,18 @@ def main():
 
 
     #create a separate logs folder for each attention run
-    attention_type = 'flash_' if params.flash else 'slow_'
-    log_folder_name = attention_type+"_".join([f"{key}{value}" for key, value in params.profiler_schedule_args.items()])
+    attention_type = 'flash' if params.flash else 'slow'
+    parameters = "-".join([f"{key}{value}" for key, value in params.__dict__.items() if key in ['max_iters', 'n_head', 'n_embd', 'block_size']])
+
+    log_folder_name = attention_type+'-'+parameters+"-".join([f"{key}{value}" for key, value in params.profiler_schedule_args.items()])
     log_folder_name = f"logs_{log_folder_name}"
     if master_process:
         os.makedirs(params.out_dir+'/'+log_folder_name, exist_ok=True)
 
     if params.wandb_log and master_process:
         # wandb.tensorboard.patch(root_logdir=out_dir) #+'/'+log_folder_name)
-        wandb.init(project=params.wandb_project, name=params.wandb_run_name, config=wandb_config, sync_tensorboard=True) 
+        wandb_run_name = attention_type+'-'+parameters
+        wandb.init(project=params.wandb_project, name=wandb_run_name, config=wandb_config, sync_tensorboard=True) 
 
     # Wrap train loop in the profiler context manager:
     #print('\n torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
@@ -354,15 +360,17 @@ def main():
         profiler.stop()
         for cycle in glob.glob(f"{params.out_dir+'/'+log_folder_name}/*.pt.trace.json", recursive=True):
             wandb.save(cycle, base_path=f"{params.out_dir+'/'+log_folder_name}", policy="now") 
-        wandb.finish() #TODO move this to boilerplate?
+        wandb.finish(quiet=True) #TODO move this to boilerplate? #quiet:true to minimize log output
                 
     if ddp:
         destroy_process_group()
 
 
+
 if __name__ == '__main__':
     host = '127.0.0.1'
-    port = 12344
+    port = params.random_port
+    print('\n \n \n socket params.random_port', params.random_port)
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

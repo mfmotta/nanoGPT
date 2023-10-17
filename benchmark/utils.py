@@ -68,7 +68,7 @@ def set_params(original_params, new_params):
         
 
 
-###################################### explor tensorboard logs ################################
+###################################### explore tensorboard logs ################################
 #these methods are quite quick and dirty, but have been checked for correctness
 
 def collect_traces(attention='flash'):

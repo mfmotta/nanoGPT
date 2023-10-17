@@ -64,7 +64,7 @@ def main():
             ddp_world_size = int(os.environ['WORLD_SIZE'])#ngpus_per_node = torch.cuda.device_count() #=local world_size
         else:
             os.environ["MASTER_ADDR"] = "localhost"
-            os.environ["MASTER_PORT"] = "12345"
+            os.environ["MASTER_PORT"] = "12346"
             ddp_local_rank = 0
             ddp_world_size = 1
 
@@ -72,6 +72,8 @@ def main():
         master_process = ddp_local_rank  == 0
         seed_offset = ddp_local_rank # each process gets a different seed
         device = f'cuda:{ddp_local_rank}'
+        torch.cuda.set_device(device) 
+        torch.manual_seed(1337 + seed_offset)
         
         # world_size number of processes will be training simultaneously, so we can scale
         # down the desired gradient accumulation iterations per process proportionally
@@ -80,11 +82,12 @@ def main():
 
     else:
         ddp = False
+        device = 'cpu'
         print('using CPU, this will be slow')
         master_process = True
         ddp_world_size = 1
 
-    torch.cuda.set_device(device)   
+      
     tokens_per_iter = params.gradient_accumulation_steps * ddp_world_size * params.batch_size * params.block_size
     print(f"tokens per iteration will be: {tokens_per_iter:,}")
 
@@ -92,8 +95,7 @@ def main():
     ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16, 'float16': torch.float16}[dtype]
     ctx = nullcontext() if device_type == 'cpu' else torch.amp.autocast(device_type=device_type, dtype=ptdtype)
     
-    torch.cuda.set_device(device)
-    torch.manual_seed(1337 + seed_offset)
+    
         
     if master_process:
         os.makedirs(params.out_dir, exist_ok=True)
@@ -252,7 +254,7 @@ def main():
 
     # Wrap train loop in the profiler context manager:
     #print('\n torch.profiler.itt.is_available()',torch.profiler.itt.is_available())
-    print("\n \n profiler_schedule_args \n  \n", params.profiler_schedule_args)
+    print("\n \n profiler_schedule_args:  {} \n \n".format(params.profiler_schedule_args))
     with torch.profiler.profile(
 
         activities=[
@@ -352,7 +354,7 @@ def main():
         profiler.stop()
         for cycle in glob.glob(f"{params.out_dir+'/'+log_folder_name}/*.pt.trace.json", recursive=True):
             wandb.save(cycle, base_path=f"{params.out_dir+'/'+log_folder_name}", policy="now") 
-        wandb.finish()
+        wandb.finish() #TODO move this to boilerplate?
                 
     if ddp:
         destroy_process_group()
@@ -360,15 +362,22 @@ def main():
 
 if __name__ == '__main__':
     host = '127.0.0.1'
-    port = 12345
+    port = 12344
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((host, port))
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     try:
-        main()
+        server_socket.bind((host, port))
+    except Exception as e:
+        print(f"Failed to bind: {e}")
+    else:
+        server_socket.listen(1)
+        print(f"Listening on {host}:{port}")
     
-    finally:
-        server_socket.close()
+        try:
+            main()
+        finally:
+            server_socket.close()
 
 

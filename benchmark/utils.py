@@ -1,3 +1,7 @@
+import glob
+import json
+import pandas as pd
+import numpy as np
 from contextlib import contextmanager
 
 ######################  helpers to manipulate dictionary of parameters ###################
@@ -71,27 +75,32 @@ def set_params(original_params, new_params):
 ###################################### explore tensorboard logs ################################
 #these methods are quite quick and dirty, but have been checked for correctness
 
-def collect_traces(attention='flash'):
-    #returns a list of traceEvents dictionaries for all runs with selected 
-    #pt.trace.json keys:['schemaVersion', 'deviceProperties', 'distributedInfo', 'with_flops', 'with_modules', 'with_stack', 'traceEvents', 'traceName']
-    data = []
-    for run in glob.glob(f"{params.out_dir}/**/*.pt.trace.json", recursive=True):
+def collect_traces(out_dir, attention):
+    # returns a dictionary of traceEvents for all runs in out_dir with selected attention
+    # traceEvents is a list of events dictionaries
+    # pt.trace.json keys:['schemaVersion', 'deviceProperties', 'distributedInfo', 'with_flops', 
+    # 'with_modules', 'with_stack', 'traceEvents', 'traceName']
+    data = {}
+    for run in glob.glob(f"{out_dir}/**/*.pt.trace.json", recursive=True):
         if run.split('logs_')[1].split('-')[0]==attention:
             with open(run) as jsonFile:
-                data.append(json.load(jsonFile)['traceEvents'])
+                events_dict = json.load(jsonFile)
+                run_name = events_dict['traceName'].split('logs_')[1].split('/')[0]
+                events = events_dict['traceEvents']
+                data[run_name] =  events
     return data
-    
-def kernel_mean_duration(runTrace, name_filter = None):
+
+
+def kernel_mean_duration(runTrace, kernel_name):
     #aggregates call duration for all calls of runTrace=traceEvents
     #computes the average call duration for each run
 
-    #TODO add lambda for regex match with name_filer
+    #TODO add lambda for regex match with kernel_name
 
     keys = {'name', 'dur'}
     kernel_events = [{k: trace[k] for k in keys} for trace in runTrace if 'cat' in trace.keys() if trace['cat']=='kernel']
 
-    if name_filter is not None:
-        kernel_events = [event for event in kernel_events if name_filter == event['name']]
+    kernel_events = [event for event in kernel_events if kernel_name == event['name']]
     kernel_summary = {event['name']: {'dur': 0, 'calls':0} for event in kernel_events}
 
     for event in kernel_events:
@@ -103,17 +112,17 @@ def kernel_mean_duration(runTrace, name_filter = None):
     return kernel_summary
 
 
-def kernel_mean_occupancy(runTrace, name_filter = None):
+def kernel_mean_occupancy(runTrace, kernel_name):
     #aggregates 'est. achieved occupancy %' and call duration for all calls of runTrace=traceEvents
     #computes the weighted average of occupancy with weights=call duration for each run
 
-    #TODO add lambda for regex match with name_filer
+    #TODO add lambda for regex match with kernel_name
 
     keys = {'name', 'args', 'dur'}
+    #select subset of events: kernel kernels:
     kernel_events = [{k: trace[k] for k in keys} for trace in runTrace if 'cat' in trace.keys() if trace['cat']=='kernel']
-
-    if name_filter is not None:
-        kernel_events = [event for event in kernel_events if name_filter == event['name']]
+    #select events for a kernel with name = kerne_name:
+    kernel_events = [event for event in kernel_events if kernel_name == event['name']]
     kernel_aggregate = {event['name']: {'occupancy': 0,  'calls':0, 'dur':0} for event in kernel_events}
     kernel_summary = {event['name']: {'mean_occupancy': 0} for event in kernel_events}
 
@@ -124,3 +133,27 @@ def kernel_mean_occupancy(runTrace, name_filter = None):
         weighted_avg = np.round(kernel_aggregate[event['name']]['occupancy']/ kernel_aggregate[event['name']]['dur'],2)
         kernel_summary[event['name']]['mean_occupancy'] = weighted_avg
     return kernel_summary
+
+
+def aggregate_metrics(kernel_name, metric, runs):
+    if metric == 'mean_duration':
+        return [kernel_mean_duration(run, kernel_name)[kernel_name]['mean_duration'] for run in runs.values()]
+    elif metric == 'mean_occupancy':
+        return [kernel_mean_occupancy(run, kernel_name)[kernel_name]['mean_occupancy'] for run in runs.values()]
+    else:
+        raise ValueError('valid metrics are mean_duration and mean_occupancy')
+    
+
+def compare_runs(out_dir, attention, kernel_name):
+    #outputs the metrics = mean_duration, mean_occupancy for kernel=kernel_name 
+    # for different runs
+    #this recovers the exact same values in the tensorboard
+
+    runs = collect_traces(out_dir, attention=attention) #index
+    cols = ['mean_duration', 'mean_occupancy']
+    aggregated_metrics = {metric : aggregate_metrics(kernel_name, metric, runs) for metric in cols}
+    
+    df =  pd.DataFrame(aggregated_metrics, index = runs.keys())
+    df.index.name = attention
+    
+    return df

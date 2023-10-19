@@ -1,15 +1,15 @@
 # Profiling the training of [nanoGPT](https://github.com/karpathy/nanoGPT) with different implementations of the attention layer
 
-This project is based on nanoGPT -- a medium-sized GPT model that is able to reproduce GPT-2 on OpenWebText. Please refer to the original repository for details. Our project will focus on the computational efficiency of the Attention Layers used by the model.
+This project is based on nanoGPT -- a medium-sized GPT model that is able to reproduce GPT-2 on OpenWebText. Please refer to the [original repository](https://github.com/karpathy/nanoGPT) for details. This project will focus on the computational efficiency of the Attention Layers used by the model.
 
 PyTorch >= 2.0 introduces an optimization of the Attention Layer referred to as *Flash Attention*. The key idea introduced by the [Flash Attention](https://arxiv.org/abs/2205.14135) paper is to minimize memory movement during computation, i.e. reads and writes on different levels of the memory hierarchy, which makes computations and therefore training much faster.
 
-In these experiments we will focus on a tiny version of the model trained on the works of Shakespeare. We don't aim for optimizing training at this point.
+In these experiments I will focus on a tiny version of the model trained on the works of Shakespeare. I don't aim for optimizing training at this point.
 
 
 #### What is different?
 
-I have used Karpathy's nanoGPT as a starting point for this project. I have made the following changes and contributions on top of it:
+I have used Karpathy's nanoGPT as a starting point, and have made the following changes and contributions on top of it:
  - refactored ``config/train_shakespear_char.py`` to contain all tunable parameters.
  - introduced ``train_torch_profiler.py`` and ``train_nsight_profiler.py``, which are adaptations of 
  the original ``train.py`` for profiling with different tools.
@@ -55,7 +55,11 @@ I have used Karpathy's nanoGPT as a starting point for this project. I have made
 
 # Training faster with Flash attention.
 
-We train the model for a few hundred iterations with both "slow" and "flash" attention. Results can be visualized [here](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1). Training and validation metrics don't differ for both types of attention, but the GPU utilization does. In particular, we see that flash attention trains much faster (less than half of the time in this short probing experiment). Wandb uses [nvidia-ml-py3](https://github.com/nicolargo/nvidia-ml-py3/blob/master/pynvml.py) to collect[ system metrics](https://docs.wandb.ai/guides/app/features/system-metrics). The reported GPU memory utlization refers to the DRAM global device memory (see the NVML API Reference Manual in [NVIDIA Management Library (NVML)](https://developer.nvidia.com/nvidia-management-library-nvml)).
+We train the model for a few hundred iterations with both "slow" and "flash" attention. Results can be visualized [here](https://wandb.ai/m-motta/profile-attention-nano-gpt/reports/GPU-Profiling-slow-vs-flash-attention--Vmlldzo1NjA0MzI1). Training and validation metrics don't differ for both types of attention, but the GPU utilization does. In particular, we see that flash attention trains much faster (less than half of the time in this short probing experiment).
+
+ Wandb uses [nvidia-ml-py3](https://github.com/nicolargo/nvidia-ml-py3/blob/master/pynvml.py) to collect[ system metrics](https://docs.wandb.ai/guides/app/features/system-metrics). 
+ 
+ &rarr The reported GPU memory utlization refers to the DRAM global device memory (see the NVML API Reference Manual in [NVIDIA Management Library (NVML)](https://developer.nvidia.com/nvidia-management-library-nvml)).
 
 </br>
 
@@ -92,6 +96,9 @@ We use the parameters defined in [``train_shakespeare_char.py``](https://github.
 As is, the code will save the TensorBoard profiler logs to wandb, but these cannot be shared in the report. So below we show parts of the TensorBoard report:
 
 ## Tensorboard Torch Profiler Overview
+
+These are preliminary results that will be updated after the [benchmarking experiments](https://github.com/mfmotta/nanoGPT/tree/main/benchmark/benchmark.ipynb) (in progress) are done.
+
 
 GPU Summary 
 

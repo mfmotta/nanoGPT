@@ -15,9 +15,9 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-print('\n Flash attention enabled?', torch.backends.cuda.flash_sdp_enabled())
-print('\n mem_efficient_sdp_enabled?',torch.backends.cuda.mem_efficient_sdp_enabled())
-print('\n math_sdp_enabled?', torch.backends.cuda.math_sdp_enabled())
+assert(torch.backends.cuda.flash_sdp_enabled(), ' Flash attention not enabled')
+assert(torch.backends.cuda.mem_efficient_sdp_enabled(), 'mem_efficient_sdp not enabled')
+assert(torch.backends.cuda.math_sdp_enabled(), 'math_sdp_enabled')
 
 
 class LayerNorm(nn.Module):

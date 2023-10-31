@@ -71,6 +71,8 @@ def main():
             ddp_local_rank = 0
             ddp_world_size = 1
 
+        if torch.distributed.is_initialized(): #when run is interrupted before process group is destroyed
+            destroy_process_group()
         init_process_group(backend=backend, rank=ddp_local_rank, world_size=ddp_world_size) 
         master_process = ddp_local_rank  == 0
         seed_offset = ddp_local_rank # each process gets a different seed

@@ -2,12 +2,11 @@
 
 import os
 from pathlib import Path
-import warnings
 from urllib.request import urlretrieve
 import bibtexparser
 import re
 from pdfminer.high_level import extract_text
-from datasets import Dataset
+from datasets import Dataset, load_dataset
 
 
 def download_paper(arxiv_id, dir_path):
@@ -95,23 +94,22 @@ def create_corpus(papers_path, arxiv_ids, out_path = 'data', min_line_length = 4
     return text_file, abstract_file
 
 
-def create_dataset(papers_path, arxiv_ids, split = 0.8, out_path = 'data'):
+def create_dataset(text_file_path, abstract_file_path, test_size = 0.2):
 
-    train_corpus_file, val_corpus_file = create_corpus(papers_path, arxiv_ids, split = 0.8)
-    num_papers = len(arxiv_ids)
-    split_index = int(num_papers*split)
+    dataset = load_dataset("text", data_files=text_file_path)
 
-    train_dataset = {
-        "text": [os.path.abspath(train_corpus_file) for _ in range(split_index)],
-    }
+    with open(abstract_file_path, "r", encoding="utf-8") as abstract_file:
+        abstract_data = abstract_file.read().splitlines()
 
-    val_dataset = {
-        "text": [os.path.abspath(val_corpus_file) for _ in range(split_index, num_papers)],
-    }
+    papers_dataset = Dataset.from_dict({
+        "text": dataset['train']["text"],
+        "abstract": abstract_data
+    })
 
-    train_dataset = Dataset.from_dict(train_dataset, split = 'train')
-    val_dataset = Dataset.from_dict(val_dataset, split = 'val')
-    print('\n Created train and val splits')
-    return train_dataset, val_dataset
+    split_dataset = papers_dataset.train_test_split(test_size=test_size, seed=2357, shuffle=True)
+    split_dataset['val'] = split_dataset.pop('test')
+
+    return split_dataset
+
 
 

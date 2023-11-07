@@ -1,10 +1,13 @@
 
 
 import os
+import re
+import numpy as np
+import tiktoken
 from pathlib import Path
 from urllib.request import urlretrieve
 import bibtexparser
-import re
+from tqdm import tqdm
 from pdfminer.high_level import extract_text
 from datasets import Dataset, load_dataset
 
@@ -110,6 +113,50 @@ def create_dataset(text_file_path, abstract_file_path, test_size = 0.2):
     split_dataset['val'] = split_dataset.pop('test')
 
     return split_dataset
+
+
+def tokenize(dataset):
+     
+    enc = tiktoken.get_encoding("gpt2")
+    prefix = "summarize as abstract: "
+    def process(examples):
+        #based both on karpathy's prepare.py and  https://huggingface.co/docs/transformers/tasks/summarization
+        inputs = [prefix + doc for doc in examples["text"]]
+        ids = [enc.encode_ordinary(elem)+[enc.eot_token] for elem in inputs] # encode_ordinary ignores any special tokens
+        # added the end of text token, e.g. 50256 for gpt2 bpe # note: check if eot should be prepended not appended 
+        label = enc.encode_ordinary_batch(examples["abstract"]) #TODO use encode_batch ?
+        #out = {'ids': ids, 'len': len(ids)}
+        lengths = [len(id) for id in ids]
+        return {'ids': ids, 'label': label, 'len': lengths }
+
+    tokenized = dataset.map( #https://github.com/huggingface/datasets/blob/src/datasets/dataset_dict.py
+            process,
+            remove_columns=['text', 'abstract'],
+            desc="tokenizing the splits",
+            batched=True #in contrast to Karpathy's several examples
+        )
+    return tokenized
+
+def create_sharded_dataset(tokenized_dataset, out_dir, total_batches):
+    #total_batches = num_shards #TODO perhaps rename?
+
+    for split, dset in tokenized_dataset.items():
+        arr_len = np.sum(dset['len'], dtype=np.uint64)
+        filename = os.path.join(out_dir, f'{split}.bin')
+        dtype = np.uint16 # (can do since enc.max_token_value == 50256 is < 2**16)
+        arr = np.memmap(filename, dtype=dtype, mode='w+', shape=(arr_len,))
+        #total_batches = 2 #1024
+
+        idx = 0
+        for batch_idx in tqdm(range(total_batches), desc=f'writing {filename}'):
+            # Batch together samples for faster write
+            batch = dset.shard(num_shards=total_batches, index=batch_idx, contiguous=True).with_format('numpy')
+            arr_batch = np.concatenate(batch['ids'])
+            # Write into mmap
+            arr[idx : idx + len(arr_batch)] = arr_batch
+            idx += len(arr_batch)
+        arr.flush()
+
 
 
 

@@ -1,3 +1,9 @@
 [submodule "cuda/cutlass"]
 	path = cuda/cutlass
 	url = https://github.com/NVIDIA/cutlass
+[submodule "cs149gpt"]
+	path = cs149gpt
+	url = https://github.com/mfmotta/cs149gpt
+[submodule "cuda/cs149gpt"]
+	path = cuda/cs149gpt
+	url = https://github.com/mfmotta/cs149gpt
